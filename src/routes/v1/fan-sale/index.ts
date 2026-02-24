@@ -1,10 +1,10 @@
-// Fan Sale route namespace — Phase 0 scaffold
-// Each TODO maps to a child ticket of MKPLS-338.
-// Routes are registered here but implemented in dedicated handler files per ticket.
+// Fan Sale route namespace
+// Each handler lives in handlers/<ticket>.ts; stubs remain until implemented.
 
 import { FastifyPluginAsync } from 'fastify'
 import { authenticate } from '../../../middleware/authenticate'
 import { requireFanSaleEnabled } from '../../../middleware/featureFlag'
+import { updateListingHandler } from './handlers/update-listing'
 
 export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
   // Apply feature flag gate and auth to every route in this namespace
@@ -47,11 +47,8 @@ export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
 
   // ---------------------------------------------------------------------------
   // MKPLS-358: PATCH /fan-sale/listings/:id
-  // Price update — reprices an ACTIVE listing. Writes audit log entry.
   // ---------------------------------------------------------------------------
-  app.patch('/fan-sale/listings/:id', async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-358 pending', statusCode: 501 })
-  })
+  app.patch('/fan-sale/listings/:id', updateListingHandler)
 
   // ---------------------------------------------------------------------------
   // MKPLS-359: DELETE /fan-sale/listings/:id
