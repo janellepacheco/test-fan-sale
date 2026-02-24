@@ -1,20 +1,24 @@
-// Fan Sale route namespace — Phase 0 scaffold
-// Each TODO maps to a child ticket of MKPLS-338.
-// Routes are registered here but implemented in dedicated handler files per ticket.
+// Fan Sale route namespace
+// Each handler lives in handlers/<ticket>.ts; stubs remain until implemented.
 
 import { FastifyPluginAsync } from 'fastify'
 import { authenticate } from '../../../middleware/authenticate'
 import { requireFanSaleEnabled } from '../../../middleware/featureFlag'
+import { HermesClient } from '../../../services/hermes'
+import { makeCreateListingHandler } from './handlers/create-listing'
+import { env } from '../../../plugins/env'
 
 export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
   // Apply feature flag gate and auth to every route in this namespace
   app.addHook('preHandler', requireFanSaleEnabled)
   app.addHook('preHandler', authenticate)
 
+  const hermesClient = env.HERMES_SERVICE_URL
+    ? new HermesClient(env.HERMES_SERVICE_URL)
+    : null
+
   // ---------------------------------------------------------------------------
   // MKPLS-346: GET /orders/:id/eligible-tickets
-  // Returns tickets from the authenticated user's order that are eligible
-  // for Fan Sale listing. Source is unrestricted — VS, StubHub, TM, AXS, etc.
   // ---------------------------------------------------------------------------
   app.get('/orders/:id/eligible-tickets', async (_request, reply) => {
     return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-346 pending', statusCode: 501 })
@@ -22,12 +26,8 @@ export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
 
   // ---------------------------------------------------------------------------
   // MKPLS-347: POST /fan-sale/listings
-  // Creates a new fan listing. Validates: seller velocity (≤10 active),
-  // barcode dedup, asking price within allowed range, ticket ownership.
   // ---------------------------------------------------------------------------
-  app.post('/fan-sale/listings', async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-347 pending', statusCode: 501 })
-  })
+  app.post('/fan-sale/listings', makeCreateListingHandler(hermesClient))
 
   // ---------------------------------------------------------------------------
   // MKPLS-348: GET /fan-sale/listings
