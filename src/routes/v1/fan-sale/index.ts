@@ -1,10 +1,14 @@
 // Fan Sale route namespace — Phase 0 scaffold
 // Each TODO maps to a child ticket of MKPLS-338.
 // Routes are registered here but implemented in dedicated handler files per ticket.
+//
+// NOTE: stub labels MKPLS-348/349 were incorrect — those are frontend tickets.
+// Corrected mappings: list = MKPLS-357, single get = included in MKPLS-357.
 
 import { FastifyPluginAsync } from 'fastify'
 import { authenticate } from '../../../middleware/authenticate'
 import { requireFanSaleEnabled } from '../../../middleware/featureFlag'
+import { listingsHandler, getListingHandler } from './handlers/listings'
 
 export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
   // Apply feature flag gate and auth to every route in this namespace
@@ -13,8 +17,6 @@ export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
 
   // ---------------------------------------------------------------------------
   // MKPLS-346: GET /orders/:id/eligible-tickets
-  // Returns tickets from the authenticated user's order that are eligible
-  // for Fan Sale listing. Source is unrestricted — VS, StubHub, TM, AXS, etc.
   // ---------------------------------------------------------------------------
   app.get('/orders/:id/eligible-tickets', async (_request, reply) => {
     return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-346 pending', statusCode: 501 })
@@ -22,40 +24,32 @@ export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
 
   // ---------------------------------------------------------------------------
   // MKPLS-347: POST /fan-sale/listings
-  // Creates a new fan listing. Validates: seller velocity (≤10 active),
-  // barcode dedup, asking price within allowed range, ticket ownership.
   // ---------------------------------------------------------------------------
   app.post('/fan-sale/listings', async (_request, reply) => {
     return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-347 pending', statusCode: 501 })
   })
 
   // ---------------------------------------------------------------------------
-  // MKPLS-348: GET /fan-sale/listings
-  // Returns all listings for the authenticated seller.
+  // MKPLS-357: GET /fan-sale/listings
+  // Returns all listings for the authenticated seller, paginated, with status filter.
   // ---------------------------------------------------------------------------
-  app.get('/fan-sale/listings', async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-348 pending', statusCode: 501 })
-  })
+  app.get('/fan-sale/listings', listingsHandler)
 
   // ---------------------------------------------------------------------------
-  // MKPLS-349: GET /fan-sale/listings/:id
-  // Returns a single listing by ID. Seller must own the listing.
+  // MKPLS-357: GET /fan-sale/listings/:id
+  // Returns a single listing by ID. Seller must own the listing (404 on mismatch).
   // ---------------------------------------------------------------------------
-  app.get('/fan-sale/listings/:id', async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-349 pending', statusCode: 501 })
-  })
+  app.get('/fan-sale/listings/:id', getListingHandler)
 
   // ---------------------------------------------------------------------------
-  // MKPLS-358: PATCH /fan-sale/listings/:id
-  // Price update — reprices an ACTIVE listing. Writes audit log entry.
+  // MKPLS-358: PATCH /fan-sale/listings/:id — reprice
   // ---------------------------------------------------------------------------
   app.patch('/fan-sale/listings/:id', async (_request, reply) => {
     return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-358 pending', statusCode: 501 })
   })
 
   // ---------------------------------------------------------------------------
-  // MKPLS-359: DELETE /fan-sale/listings/:id
-  // Soft-deletes (DELISTED) an ACTIVE listing. Writes audit log entry.
+  // MKPLS-359: DELETE /fan-sale/listings/:id — delist
   // ---------------------------------------------------------------------------
   app.delete('/fan-sale/listings/:id', async (_request, reply) => {
     return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-359 pending', statusCode: 501 })
@@ -63,22 +57,26 @@ export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
 
   // ---------------------------------------------------------------------------
   // MKPLS-353: GET /fan-sale/price-comps
-  // Returns comparable active listings for an event/section, plus
-  // suggestedPrice (median), minPrice, maxPrice to help sellers price fairly.
   // ---------------------------------------------------------------------------
   app.get('/fan-sale/price-comps', async (_request, reply) => {
     return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-353 pending', statusCode: 501 })
   })
 
   // ---------------------------------------------------------------------------
+  // MKPLS-368: POST /fan-sale/payout/onboard
+  // ---------------------------------------------------------------------------
+  app.post('/fan-sale/payout/onboard', async (_request, reply) => {
+    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-368 pending', statusCode: 501 })
+  })
+
+  // ---------------------------------------------------------------------------
   // MKPLS-370: POST /fan-sale/webhooks/adyen
-  // Adyen webhook receiver — KYC status changes, transfer outcomes.
-  // Validates HMAC before processing. Auth hook is bypassed for this route
-  // (registered after addHook so it overrides with its own preHandler).
+  // Adyen webhook receiver — HMAC-secured, no JWT. See MKPLS-370 branch for
+  // the correct implementation using a scoped child plugin (not preHandler: []).
   // ---------------------------------------------------------------------------
   app.post(
     '/fan-sale/webhooks/adyen',
-    { preHandler: [] }, // No JWT auth — Adyen signs with HMAC instead
+    { preHandler: [] }, // placeholder — see MKPLS-370 branch for correct scoping
     async (_request, reply) => {
       return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-370 pending', statusCode: 501 })
     },
