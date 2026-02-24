@@ -27,6 +27,10 @@ const envSchema = z.object({
 
   // Internal services
   HERMES_SERVICE_URL: z.string().url().optional(),
+
+  // Redis — used for price-comps response cache (MKPLS-353)
+  REDIS_URL: z.string().url().optional(),
+  PRICE_COMPS_TTL_SECONDS: z.coerce.number().default(300),
 })
 
 const parsed = envSchema.safeParse(process.env)

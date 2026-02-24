@@ -6,6 +6,7 @@ import cookie from '@fastify/cookie'
 import jwt from '@fastify/jwt'
 import { env } from './plugins/env'
 import { prismaPlugin } from './plugins/prisma'
+import { redisPlugin } from './plugins/redis'
 import { fanSaleRoutes } from './routes/v1/fan-sale'
 
 export const buildApp = async () => {
@@ -35,6 +36,9 @@ export const buildApp = async () => {
 
   // Database
   await app.register(prismaPlugin)
+
+  // Cache (optional — degrades gracefully if REDIS_URL is unset)
+  await app.register(redisPlugin)
 
   // Routes
   await app.register(fanSaleRoutes, { prefix: '/v1' })
