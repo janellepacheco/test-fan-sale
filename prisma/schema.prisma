@@ -100,6 +100,7 @@ model SellerPaymentAccount {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
+  @@index([adyenAccountHolderId])  // MKPLS-370: webhook handler looks up seller by accountHolderId
   @@map("seller_payment_accounts")
 }
 
@@ -133,4 +134,16 @@ enum PayoutStatus {
   INITIATED
   COMPLETED
   FAILED
+}
+
+// MKPLS-370: Deduplication log for inbound Adyen webhook deliveries.
+// Adyen retries webhooks on non-200 responses; storing notificationId prevents
+// duplicate DB writes and double seller notifications on redelivery.
+model WebhookEvent {
+  id             String   @id @default(cuid())
+  notificationId String   @unique // Adyen's globally unique delivery ID
+  eventType      String            // e.g. "balancePlatform.accountHolder.updated"
+  processedAt    DateTime @default(now())
+
+  @@map("webhook_events")
 }
