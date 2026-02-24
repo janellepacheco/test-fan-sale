@@ -1,0 +1,136 @@
+// MKPLS-339: fan_listings and fulfillments DB schema
+// ticket_source is captured for analytics but NOT used for eligibility gating (decision: 2026-02-24)
+// seller velocity limit: max 10 active listings per seller (MKPLS-387)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model FanListing {
+  id          String          @id @default(cuid())
+  sellerId    Int
+  orderId     String
+  ticketId    String
+  ticketSource String         @default("other")
+  // constrained values: vivid_seats | stubhub | seatgeek | ticketmaster | axs | other
+  // any platform's tickets are eligible — source is analytics only
+
+  eventId     String
+  section     String
+  row         String
+  seatNumber  String
+  askingPrice Decimal         @db.Decimal(10, 2)
+  feePercent  Decimal         @db.Decimal(5, 4)
+  status      FanListingStatus @default(ACTIVE)
+  barcodeHash String?         @unique  // MKPLS-386: deduplication at create time
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  expiresAt   DateTime
+
+  fulfillments    Fulfillment[]
+  auditLogs       ListingAuditLog[]
+
+  @@index([sellerId])
+  @@index([sellerId, status])  // used by velocity check: count(sellerId, ACTIVE) <= 10
+  @@index([eventId])
+  @@index([status])
+  @@map("fan_listings")
+}
+
+enum FanListingStatus {
+  ACTIVE
+  SOLD
+  DELISTED
+  EXPIRED
+  FULFILLED
+}
+
+model Fulfillment {
+  id           String            @id @default(cuid())
+  listingId    String
+  listing      FanListing        @relation(fields: [listingId], references: [id])
+  buyerOrderId String
+  status       FulfillmentStatus @default(PENDING)
+  deadlineAt   DateTime
+  fulfilledAt  DateTime?
+
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([listingId])
+  @@map("fulfillments")
+}
+
+enum FulfillmentStatus {
+  PENDING
+  FULFILLED
+  FAILED
+  EXPIRED
+}
+
+// MKPLS-362: listing mutation audit log
+model ListingAuditLog {
+  id        String     @id @default(cuid())
+  listingId String
+  listing   FanListing @relation(fields: [listingId], references: [id])
+  action    String     // e.g. "created" | "price_updated" | "delisted" | "sold"
+  actorId   Int
+  metadata  Json?      // e.g. { oldPrice: 50, newPrice: 45 }
+  createdAt DateTime   @default(now())
+
+  @@index([listingId])
+  @@map("listing_audit_logs")
+}
+
+// MKPLS-368: Adyen seller onboarding and payment account storage
+model SellerPaymentAccount {
+  id                    String    @id @default(cuid())
+  sellerId              Int       @unique
+  adyenAccountHolderId  String?
+  adyenBalanceAccountId String?
+  paymentInstrumentId   String?   // stored card/debit registered via Adyen /paymentInstruments
+  kycStatus             KycStatus @default(PENDING)
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@map("seller_payment_accounts")
+}
+
+enum KycStatus {
+  PENDING
+  KYC_VERIFIED
+  KYC_FAILED
+}
+
+// MKPLS-371: payout records written after Adyen Transfers API call
+model Payout {
+  id           String       @id @default(cuid())
+  sellerId     Int
+  listingId    String
+  transferId   String?      @unique  // Adyen transfer ID
+  amount       Decimal      @db.Decimal(10, 2)
+  status       PayoutStatus @default(PENDING)
+  initiatedAt  DateTime?
+  completedAt  DateTime?
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([sellerId])
+  @@index([listingId])
+  @@map("payouts")
+}
+
+enum PayoutStatus {
+  PENDING
+  INITIATED
+  COMPLETED
+  FAILED
+}
