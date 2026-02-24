@@ -92,9 +92,11 @@ model ListingAuditLog {
 model SellerPaymentAccount {
   id                    String    @id @default(cuid())
   sellerId              Int       @unique
+  adyenLegalEntityId    String?   // set after createLegalEntity; referenced by KYC webhooks (MKPLS-370)
   adyenAccountHolderId  String?
   adyenBalanceAccountId String?
   paymentInstrumentId   String?   // stored card/debit registered via Adyen /paymentInstruments
+  onboardingUrl         String?   // hosted onboarding URL returned to the seller; stored for idempotency
   kycStatus             KycStatus @default(PENDING)
 
   createdAt             DateTime  @default(now())

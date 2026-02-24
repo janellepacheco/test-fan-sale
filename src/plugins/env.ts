@@ -24,6 +24,9 @@ const envSchema = z.object({
   ADYEN_BALANCE_PLATFORM: z.string().optional(),
   ADYEN_WEBHOOK_HMAC_KEY: z.string().optional(),
   ADYEN_ENVIRONMENT: z.enum(['TEST', 'LIVE']).default('TEST'),
+  // Override API base URLs for local dev / sandbox — defaults point to Adyen production
+  ADYEN_LEM_BASE_URL: z.string().url().optional(),
+  ADYEN_BCL_BASE_URL: z.string().url().optional(),
 
   // Internal services
   HERMES_SERVICE_URL: z.string().url().optional(),

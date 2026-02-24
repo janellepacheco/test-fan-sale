@@ -5,11 +5,27 @@
 import { FastifyPluginAsync } from 'fastify'
 import { authenticate } from '../../../middleware/authenticate'
 import { requireFanSaleEnabled } from '../../../middleware/featureFlag'
+import { AdyenBalancePlatformClient } from '../../../services/adyen'
+import { makeOnboardHandler } from './handlers/onboard'
+import { env } from '../../../plugins/env'
 
 export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
   // Apply feature flag gate and auth to every route in this namespace
   app.addHook('preHandler', requireFanSaleEnabled)
   app.addHook('preHandler', authenticate)
+
+  // ---------------------------------------------------------------------------
+  // MKPLS-368: POST /fan-sale/payout/onboard
+  // Initiates Adyen Balance Platform onboarding for a seller.
+  // Idempotent: PENDING sellers get back their existing hosted URL.
+  // ---------------------------------------------------------------------------
+  const adyenClient = new AdyenBalancePlatformClient({
+    apiKey: env.ADYEN_API_KEY ?? '',
+    balancePlatformId: env.ADYEN_BALANCE_PLATFORM ?? '',
+    lemBaseUrl: env.ADYEN_LEM_BASE_URL,
+    bclBaseUrl: env.ADYEN_BCL_BASE_URL,
+  })
+  app.post('/fan-sale/payout/onboard', makeOnboardHandler(adyenClient))
 
   // ---------------------------------------------------------------------------
   // MKPLS-346: GET /orders/:id/eligible-tickets
