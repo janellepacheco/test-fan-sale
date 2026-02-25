@@ -32,9 +32,12 @@ model FanListing {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   expiresAt   DateTime
+  // MKPLS-371: used by payout-release cron to enforce the 48h post-event hold window
+  eventDate   DateTime
 
   fulfillments    Fulfillment[]
   auditLogs       ListingAuditLog[]
+  payouts         Payout[]
 
   @@index([sellerId])
   @@index([sellerId, status])  // used by velocity check: count(sellerId, ACTIVE) <= 10
@@ -114,6 +117,7 @@ model Payout {
   id           String       @id @default(cuid())
   sellerId     Int
   listingId    String
+  listing      FanListing   @relation(fields: [listingId], references: [id])
   transferId   String?      @unique  // Adyen transfer ID
   amount       Decimal      @db.Decimal(10, 2)
   status       PayoutStatus @default(PENDING)
