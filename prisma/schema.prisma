@@ -98,11 +98,29 @@ model SellerPaymentAccount {
   adyenBalanceAccountId String?
   paymentInstrumentId   String?   // stored card/debit registered via Adyen /paymentInstruments
   kycStatus             KycStatus @default(PENDING)
+  fanSaleSuspended      Boolean   @default(false)  // MKPLS-388: set true after 2 fulfillment failures
 
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
   @@map("seller_payment_accounts")
+}
+
+// MKPLS-364 + MKPLS-388: per-seller audit flags
+// reason values: 'fulfillment_failure' | 'seller_suspended' | 'unsuspended'
+model SellerFlag {
+  id            String   @id @default(cuid())
+  sellerId      Int
+  reason        String
+  fulfillmentId String?
+  actorId       Int?     // admin accountId for manual actions (unsuspend)
+  metadata      Json?    // e.g. { adminReason: "resolved" }
+
+  createdAt     DateTime @default(now())
+
+  @@index([sellerId])
+  @@index([sellerId, reason])
+  @@map("seller_flags")
 }
 
 enum KycStatus {

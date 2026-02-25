@@ -5,6 +5,7 @@
 import { FastifyPluginAsync } from 'fastify'
 import { authenticate } from '../../../middleware/authenticate'
 import { requireFanSaleEnabled } from '../../../middleware/featureFlag'
+import { requireNotSuspended } from '../../../middleware/requireNotSuspended'
 
 export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
   // Apply feature flag gate and auth to every route in this namespace
@@ -24,8 +25,9 @@ export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
   // MKPLS-347: POST /fan-sale/listings
   // Creates a new fan listing. Validates: seller velocity (≤10 active),
   // barcode dedup, asking price within allowed range, ticket ownership.
+  // MKPLS-388: requireNotSuspended gate — 403 if fanSaleSuspended=true.
   // ---------------------------------------------------------------------------
-  app.post('/fan-sale/listings', async (_request, reply) => {
+  app.post('/fan-sale/listings', { preHandler: [requireNotSuspended] }, async (_request, reply) => {
     return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-347 pending', statusCode: 501 })
   })
 
