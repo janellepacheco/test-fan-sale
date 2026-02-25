@@ -1,6 +1,18 @@
-// Fan Sale route namespace — Phase 0 scaffold
-// Each TODO maps to a child ticket of MKPLS-338.
-// Routes are registered here but implemented in dedicated handler files per ticket.
+// Fan Sale route namespace — fully merged (all MKPLS-338 child tickets)
+//
+// Routes are split into two scoped child plugins so that the Adyen webhook
+// (HMAC-secured) is never gated behind the JWT preHandler:
+//
+//   ┌─ fanSaleRoutes (prefix /v1) ─────────────────────────────────────────┐
+//   │  ┌─ webhookScope ───────────────────────────────────────────────────┐ │
+//   │  │  POST /fan-sale/webhooks/adyen  (HMAC-SHA256, no JWT)           │ │
+//   │  │  addContentTypeParser: captures rawBody for HMAC validation      │ │
+//   │  └──────────────────────────────────────────────────────────────────┘ │
+//   │  ┌─ authScope ──────────────────────────────────────────────────────┐ │
+//   │  │  preHandler: requireFanSaleEnabled + authenticate                │ │
+//   │  │  … all seller-facing routes …                                    │ │
+//   │  └──────────────────────────────────────────────────────────────────┘ │
+//   └──────────────────────────────────────────────────────────────────────┘
 
 import { FastifyPluginAsync } from 'fastify'
 import { authenticate } from '../../../middleware/authenticate'
@@ -9,88 +21,128 @@ import { requireNotSuspended } from '../../../middleware/requireNotSuspended'
 import { checkBarcodeDedup } from '../../../middleware/checkBarcodeDedup'
 import { checkListingCap } from '../../../middleware/checkListingCap'
 import { rateLimitMiddleware } from '../../../middleware/rateLimit'
+import { HermesClient } from '../../../services/hermes'
+import { AdyenBalancePlatformClient } from '../../../services/adyen'
+import { StubNotificationService } from '../../../services/notifications'
+import { env } from '../../../plugins/env'
+
+// Handlers
+import { makeEligibleTicketsHandler } from './handlers/eligible-tickets'
+import { makeCreateListingHandler } from './handlers/create-listing'
+import { listingsHandler, getListingHandler } from './handlers/listings'
+import { updateListingHandler } from './handlers/update-listing'
+import { delistHandler } from './handlers/delist'
+import { makeFulfillHandler } from './handlers/fulfill'
+import { priceCompsHandler } from './handlers/price-comps'
+import { makeOnboardHandler } from './handlers/onboard'
+import { makeAdyenWebhookHandler } from './handlers/adyen-webhook'
 
 export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
-  // Apply feature flag gate and auth to every route in this namespace
-  app.addHook('preHandler', requireFanSaleEnabled)
-  app.addHook('preHandler', authenticate)
+  // ── Shared service instances ──────────────────────────────────────────────
+  const hermesClient = env.HERMES_SERVICE_URL
+    ? new HermesClient(env.HERMES_SERVICE_URL)
+    : null
 
-  // ---------------------------------------------------------------------------
-  // MKPLS-346: GET /orders/:id/eligible-tickets
-  // Returns tickets from the authenticated user's order that are eligible
-  // for Fan Sale listing. Source is unrestricted — VS, StubHub, TM, AXS, etc.
-  // ---------------------------------------------------------------------------
-  app.get('/orders/:id/eligible-tickets', async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-346 pending', statusCode: 501 })
+  const adyenClient = new AdyenBalancePlatformClient({
+    apiKey: env.ADYEN_API_KEY ?? '',
+    balancePlatformId: env.ADYEN_BALANCE_PLATFORM ?? '',
+    lemBaseUrl: env.ADYEN_LEM_BASE_URL,
+    bclBaseUrl: env.ADYEN_BCL_BASE_URL,
   })
 
-  // ---------------------------------------------------------------------------
-  // MKPLS-347: POST /fan-sale/listings
-  // Creates a new fan listing. Validates: seller velocity (≤10 active),
-  // barcode dedup, asking price within allowed range, ticket ownership.
-  // MKPLS-386: checkBarcodeDedup — 409 if ticket already ACTIVE.
-  // MKPLS-387: checkListingCap — 429 if ≥10 active; rateLimitMiddleware — 429 if >5/hr.
-  // MKPLS-388: requireNotSuspended gate — 403 if fanSaleSuspended=true.
-  // ---------------------------------------------------------------------------
-  app.post(
-    '/fan-sale/listings',
-    { preHandler: [requireNotSuspended, checkListingCap, rateLimitMiddleware, checkBarcodeDedup] },
-    async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-347 pending', statusCode: 501 })
+  const notificationService = new StubNotificationService()
+
+  // ── Webhook scope — no JWT auth, raw body capture ─────────────────────────
+  // The custom content type parser saves raw bytes so the handler can validate
+  // Adyen's HMAC-SHA256 signature before processing the payload.
+  await app.register(async (webhookApp) => {
+    webhookApp.addContentTypeParser(
+      'application/json',
+      { parseAs: 'buffer' },
+      (req, body, done) => {
+        ;(req as typeof req & { rawBody: Buffer }).rawBody = body
+        try {
+          done(null, JSON.parse(body.toString()))
+        } catch (err) {
+          done(err as Error)
+        }
+      },
+    )
+
+    // MKPLS-370: Adyen KYC / account holder status changes
+    webhookApp.post('/fan-sale/webhooks/adyen', makeAdyenWebhookHandler(notificationService))
   })
 
-  // ---------------------------------------------------------------------------
-  // MKPLS-348: GET /fan-sale/listings
-  // Returns all listings for the authenticated seller.
-  // ---------------------------------------------------------------------------
-  app.get('/fan-sale/listings', async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-348 pending', statusCode: 501 })
-  })
+  // ── Authenticated scope — JWT + feature flag on every route ───────────────
+  await app.register(async (authApp) => {
+    authApp.addHook('preHandler', requireFanSaleEnabled)
+    authApp.addHook('preHandler', authenticate)
 
-  // ---------------------------------------------------------------------------
-  // MKPLS-349: GET /fan-sale/listings/:id
-  // Returns a single listing by ID. Seller must own the listing.
-  // ---------------------------------------------------------------------------
-  app.get('/fan-sale/listings/:id', async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-349 pending', statusCode: 501 })
-  })
+    // -------------------------------------------------------------------------
+    // MKPLS-346: GET /orders/:id/eligible-tickets
+    // Returns tickets from the authenticated user's order eligible for Fan Sale.
+    // Source is unrestricted — VS, StubHub, TM, AXS, etc.
+    // -------------------------------------------------------------------------
+    authApp.get(
+      '/orders/:id/eligible-tickets',
+      makeEligibleTicketsHandler(hermesClient as HermesClient),
+    )
 
-  // ---------------------------------------------------------------------------
-  // MKPLS-358: PATCH /fan-sale/listings/:id
-  // Price update — reprices an ACTIVE listing. Writes audit log entry.
-  // ---------------------------------------------------------------------------
-  app.patch('/fan-sale/listings/:id', async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-358 pending', statusCode: 501 })
-  })
+    // -------------------------------------------------------------------------
+    // MKPLS-347: POST /fan-sale/listings
+    // Creates a new fan listing.
+    // MKPLS-388: requireNotSuspended — 403 if fanSaleSuspended=true
+    // MKPLS-387: checkListingCap — 429 if ≥10 active listings
+    // MKPLS-387: rateLimitMiddleware — 429 if >5 creates/hr
+    // MKPLS-386: checkBarcodeDedup — 409 if ticket already ACTIVE
+    // -------------------------------------------------------------------------
+    authApp.post(
+      '/fan-sale/listings',
+      { preHandler: [requireNotSuspended, checkListingCap, rateLimitMiddleware, checkBarcodeDedup] },
+      makeCreateListingHandler(hermesClient),
+    )
 
-  // ---------------------------------------------------------------------------
-  // MKPLS-359: DELETE /fan-sale/listings/:id
-  // Soft-deletes (DELISTED) an ACTIVE listing. Writes audit log entry.
-  // ---------------------------------------------------------------------------
-  app.delete('/fan-sale/listings/:id', async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-359 pending', statusCode: 501 })
-  })
+    // -------------------------------------------------------------------------
+    // MKPLS-357: GET /fan-sale/listings
+    // Paginated list of listings for the authenticated seller, with status filter.
+    // -------------------------------------------------------------------------
+    authApp.get('/fan-sale/listings', listingsHandler)
 
-  // ---------------------------------------------------------------------------
-  // MKPLS-353: GET /fan-sale/price-comps
-  // Returns comparable active listings for an event/section, plus
-  // suggestedPrice (median), minPrice, maxPrice to help sellers price fairly.
-  // ---------------------------------------------------------------------------
-  app.get('/fan-sale/price-comps', async (_request, reply) => {
-    return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-353 pending', statusCode: 501 })
-  })
+    // -------------------------------------------------------------------------
+    // MKPLS-357: GET /fan-sale/listings/:id
+    // Single listing by ID. 404 on mismatch or not-owned (no existence leak).
+    // -------------------------------------------------------------------------
+    authApp.get('/fan-sale/listings/:id', getListingHandler)
 
-  // ---------------------------------------------------------------------------
-  // MKPLS-370: POST /fan-sale/webhooks/adyen
-  // Adyen webhook receiver — KYC status changes, transfer outcomes.
-  // Validates HMAC before processing. Auth hook is bypassed for this route
-  // (registered after addHook so it overrides with its own preHandler).
-  // ---------------------------------------------------------------------------
-  app.post(
-    '/fan-sale/webhooks/adyen',
-    { preHandler: [] }, // No JWT auth — Adyen signs with HMAC instead
-    async (_request, reply) => {
-      return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-370 pending', statusCode: 501 })
-    },
-  )
+    // -------------------------------------------------------------------------
+    // MKPLS-358: PATCH /fan-sale/listings/:id
+    // Reprice an ACTIVE listing. Writes audit log entry atomically.
+    // -------------------------------------------------------------------------
+    authApp.patch('/fan-sale/listings/:id', updateListingHandler)
+
+    // -------------------------------------------------------------------------
+    // MKPLS-359: DELETE /fan-sale/listings/:id
+    // Soft-delist (DELISTED). Audit log written atomically.
+    // -------------------------------------------------------------------------
+    authApp.delete('/fan-sale/listings/:id', delistHandler)
+
+    // -------------------------------------------------------------------------
+    // MKPLS-363: POST /fan-sale/listings/:id/fulfill
+    // Seller marks a SOLD listing fulfilled after ticket transfer.
+    // -------------------------------------------------------------------------
+    authApp.post('/fan-sale/listings/:id/fulfill', makeFulfillHandler(notificationService))
+
+    // -------------------------------------------------------------------------
+    // MKPLS-353: GET /fan-sale/price-comps
+    // Comparable ACTIVE listings + median/min/max for seller pricing guidance.
+    // Redis-cached at 300 s TTL (configurable via PRICE_COMPS_TTL_SECONDS).
+    // -------------------------------------------------------------------------
+    authApp.get('/fan-sale/price-comps', priceCompsHandler)
+
+    // -------------------------------------------------------------------------
+    // MKPLS-368: POST /fan-sale/payout/onboard
+    // Initiates Adyen Balance Platform onboarding. Idempotent for PENDING sellers.
+    // -------------------------------------------------------------------------
+    authApp.post('/fan-sale/payout/onboard', makeOnboardHandler(adyenClient))
+  })
 }

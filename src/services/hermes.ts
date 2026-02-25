@@ -1,48 +1,58 @@
-// MKPLS-375: HermesClient — fetches broker inventory from the Hermes service
-// Used by the event inventory handler to merge broker listings with fan listings.
+// MKPLS-346: Hermes BFF client
+// Provides order + ticket data used by the eligibility check and other routes.
+//
+// TODO: replace inline types with generated types from Hermes OpenAPI spec
+//       once the spec is published (tracked in MKPLS-341 follow-up).
 
-export interface BrokerListing {
-  id: string
-  source: 'broker'
+// ---------------------------------------------------------------------------
+// Hermes response shapes
+// ---------------------------------------------------------------------------
+
+export interface HermesTicket {
+  ticketId: string
+  seatNumber: string
   section: string
   row: string
-  seatNumber?: string
-  quantity: number
-  price: number
+  eventId: string
+  eventName: string
+  eventDate: string    // ISO 8601 — event start time
+  ticketSource: string // any platform: vivid_seats | stubhub | seatgeek | ticketmaster | axs | other
+  scanned: boolean
+  used: boolean
 }
 
-export interface HermesInventoryParams {
-  section?: string
-  minPrice?: number
-  maxPrice?: number
-  minQuantity?: number
+export interface HermesOrder {
+  orderId: string
+  accountId: number              // VS account that placed the order (ownership check)
+  status: 'confirmed' | 'cancelled' | 'pending' | 'refunded'
+  hasActiveDispute: boolean      // open dispute or chargeback
+  sellerSuspended: boolean       // VS account suspension flag
+  tickets: HermesTicket[]
 }
+
+// ---------------------------------------------------------------------------
+// HermesClient
+// ---------------------------------------------------------------------------
 
 export class HermesClient {
-  private readonly baseUrl: string
+  constructor(private readonly baseUrl: string) {}
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl
-  }
+  async getOrder(orderId: string, bearerToken: string): Promise<HermesOrder | null> {
+    const url = `${this.baseUrl}/api/v1/orders/${encodeURIComponent(orderId)}`
 
-  async getEventInventory(
-    eventId: string,
-    params: HermesInventoryParams = {},
-  ): Promise<BrokerListing[]> {
-    const qs = new URLSearchParams()
-    if (params.section) qs.set('section', params.section)
-    if (params.minPrice !== undefined) qs.set('minPrice', String(params.minPrice))
-    if (params.maxPrice !== undefined) qs.set('maxPrice', String(params.maxPrice))
-    if (params.minQuantity !== undefined) qs.set('minQuantity', String(params.minQuantity))
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${bearerToken}`,
+        'Content-Type': 'application/json',
+      },
+    })
 
-    const url = `${this.baseUrl}/v1/inventory/events/${eventId}?${qs}`
-    const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } })
+    if (res.status === 404) return null
 
     if (!res.ok) {
-      throw new Error(`HermesClient.getEventInventory failed: ${res.status}`)
+      throw new Error(`Hermes responded ${res.status} for order ${orderId}`)
     }
 
-    const body = (await res.json()) as { listings?: BrokerListing[] }
-    return (body.listings ?? []).map((l) => ({ ...l, source: 'broker' as const }))
+    return res.json() as Promise<HermesOrder>
   }
 }

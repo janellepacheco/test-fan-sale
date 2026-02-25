@@ -94,9 +94,11 @@ model ListingAuditLog {
 model SellerPaymentAccount {
   id                    String    @id @default(cuid())
   sellerId              Int       @unique
+  adyenLegalEntityId    String?   // set after createLegalEntity; referenced by KYC webhooks (MKPLS-370)
   adyenAccountHolderId  String?
   adyenBalanceAccountId String?
   paymentInstrumentId   String?   // stored card/debit registered via Adyen /paymentInstruments
+  onboardingUrl         String?   // hosted onboarding URL; stored for idempotency (MKPLS-368)
   kycStatus             KycStatus @default(PENDING)
   fanSaleSuspended      Boolean   @default(false)  // MKPLS-388: set true after 2 fulfillment failures
 
@@ -153,4 +155,14 @@ enum PayoutStatus {
   INITIATED
   COMPLETED
   FAILED
+}
+
+// MKPLS-370: idempotency log for Adyen webhook deliveries
+model WebhookEvent {
+  id             String   @id @default(cuid())
+  notificationId String   @unique // Adyen's globally unique delivery ID
+  eventType      String            // e.g. "balancePlatform.accountHolder.updated"
+  processedAt    DateTime @default(now())
+
+  @@map("webhook_events")
 }

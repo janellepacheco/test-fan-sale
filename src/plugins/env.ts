@@ -24,12 +24,15 @@ const envSchema = z.object({
   ADYEN_BALANCE_PLATFORM: z.string().optional(),
   ADYEN_WEBHOOK_HMAC_KEY: z.string().optional(),
   ADYEN_ENVIRONMENT: z.enum(['TEST', 'LIVE']).default('TEST'),
+  ADYEN_LEM_BASE_URL: z.string().url().optional(),
+  ADYEN_BCL_BASE_URL: z.string().url().optional(),
 
   // Internal services
   HERMES_SERVICE_URL: z.string().url().optional(),
 
-  // Redis — used for rate limiting (MKPLS-387) and caching (MKPLS-353)
+  // Redis — used for rate limiting (MKPLS-387) and price-comps cache (MKPLS-353)
   REDIS_URL: z.string().default('redis://localhost:6379'),
+  PRICE_COMPS_TTL_SECONDS: z.coerce.number().default(300),
 })
 
 const parsed = envSchema.safeParse(process.env)

@@ -1,6 +1,14 @@
 // MKPLS-342: Shared TypeScript types for the Fan Sale service
 // These are the canonical types consumed by routes, middleware, and services.
 
+// MKPLS-370: rawBody is added to requests processed by the scoped content-type
+// parser in the webhook child plugin. Routes outside that scope get undefined.
+declare module 'fastify' {
+  interface FastifyRequest {
+    rawBody?: Buffer
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Auth
 // Mirrors the AuthCookie shape from vivid-web-athena (src/middlewares/withAuthenticatedUser.ts)
