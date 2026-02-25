@@ -96,11 +96,26 @@ model SellerPaymentAccount {
   adyenBalanceAccountId String?
   paymentInstrumentId   String?   // stored card/debit registered via Adyen /paymentInstruments
   kycStatus             KycStatus @default(PENDING)
+  // MKPLS-364: set to true when seller accumulates 2+ fulfillment_failure flags
+  fanSaleSuspended      Boolean   @default(false)
 
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
   @@map("seller_payment_accounts")
+}
+
+// MKPLS-364: tracks seller violations; 2+ fulfillment_failure flags → suspension
+model SellerFlag {
+  id            String   @id @default(cuid())
+  sellerId      Int
+  reason        String   // e.g. 'fulfillment_failure'
+  fulfillmentId String?  // the fulfillment that caused this flag
+  createdAt     DateTime @default(now())
+
+  @@index([sellerId])
+  @@index([sellerId, reason])
+  @@map("seller_flags")
 }
 
 enum KycStatus {
