@@ -27,7 +27,7 @@ model FanListing {
   askingPrice Decimal         @db.Decimal(10, 2)
   feePercent  Decimal         @db.Decimal(5, 4)
   status      FanListingStatus @default(ACTIVE)
-  barcodeHash String?         @unique  // MKPLS-386: deduplication at create time
+  barcodeHash String?         // MKPLS-386: partial unique index enforced at DB level (ACTIVE only)
 
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
