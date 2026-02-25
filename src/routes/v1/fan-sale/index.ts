@@ -5,8 +5,12 @@
 import { FastifyPluginAsync } from 'fastify'
 import { authenticate } from '../../../middleware/authenticate'
 import { requireFanSaleEnabled } from '../../../middleware/featureFlag'
+import { StubNotificationService } from '../../../services/notifications'
+import { makeFulfillHandler } from './handlers/fulfill'
 
 export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
+  const notificationService = new StubNotificationService()
+
   // Apply feature flag gate and auth to every route in this namespace
   app.addHook('preHandler', requireFanSaleEnabled)
   app.addHook('preHandler', authenticate)
@@ -60,6 +64,13 @@ export const fanSaleRoutes: FastifyPluginAsync = async (app) => {
   app.delete('/fan-sale/listings/:id', async (_request, reply) => {
     return reply.code(501).send({ error: 'Not Implemented', message: 'MKPLS-359 pending', statusCode: 501 })
   })
+
+  // ---------------------------------------------------------------------------
+  // MKPLS-363: POST /fan-sale/listings/:id/fulfill
+  // Seller marks a SOLD listing as fulfilled (ticket transfer initiated).
+  // Atomically updates listing + fulfillment + audit log, then notifies buyer.
+  // ---------------------------------------------------------------------------
+  app.post('/fan-sale/listings/:id/fulfill', makeFulfillHandler(notificationService))
 
   // ---------------------------------------------------------------------------
   // MKPLS-353: GET /fan-sale/price-comps
