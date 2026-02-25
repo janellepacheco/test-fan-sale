@@ -7,6 +7,7 @@ import jwt from '@fastify/jwt'
 import { env } from './plugins/env'
 import { prismaPlugin } from './plugins/prisma'
 import { fanSaleRoutes } from './routes/v1/fan-sale'
+import { adminFanSaleRoutes } from './routes/admin/fan-sale'
 
 export const buildApp = async () => {
   const app = Fastify({
@@ -38,6 +39,7 @@ export const buildApp = async () => {
 
   // Routes
   await app.register(fanSaleRoutes, { prefix: '/v1' })
+  await app.register(adminFanSaleRoutes, { prefix: '/v1' })
 
   // Health check — used by load balancers and k8s probes
   app.get('/health', async () => ({ status: 'ok' }))
