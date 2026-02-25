@@ -32,6 +32,8 @@ model FanListing {
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
   expiresAt   DateTime
+  // MKPLS-375: event start date — fan listings excluded from inventory within 2h of this
+  eventDate   DateTime
 
   fulfillments    Fulfillment[]
   auditLogs       ListingAuditLog[]
