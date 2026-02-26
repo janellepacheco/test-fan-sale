@@ -1,5 +1,6 @@
 // MKPLS-343: JWT authentication middleware
-// Reads the 'at' cookie (set by vivid-web-athena) or a Bearer token in Authorization header.
+// Accepts tokens via x-auth-token header (hermes pattern used by vivid-web-athena)
+// or Authorization: Bearer as a fallback for direct API callers.
 // On success, decorates request.user with { accountId, brokerId? }.
 // Returns 401 on any verification failure — never leaks JWT internals.
 
@@ -17,8 +18,13 @@ export async function authenticate(
   reply: FastifyReply,
 ): Promise<void> {
   try {
-    // @fastify/jwt checks the 'at' cookie first (configured in app.ts),
-    // then falls back to the Authorization Bearer header.
+    // vivid-web-athena sends the token as x-auth-token (same pattern as hermes).
+    // Fall back to Authorization: Bearer for direct API callers / tests.
+    const xAuthToken = request.headers['x-auth-token'] as string | undefined
+    if (xAuthToken) {
+      request.headers['authorization'] = `Bearer ${xAuthToken}`
+    }
+
     await request.jwtVerify()
 
     const payload = request.user as AuthToken
@@ -27,7 +33,6 @@ export async function authenticate(
       return reply.code(401).send({ error: 'Unauthorized', message: 'Invalid token payload', statusCode: 401 })
     }
 
-    // Narrow to the shape routes actually need
     request.user = {
       accountId: payload.accountId,
       ...(payload.brokerId !== undefined && { brokerId: payload.brokerId }),
