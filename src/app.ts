@@ -24,16 +24,13 @@ export const buildApp = async () => {
     },
   })
 
-  // Cookies — needed to read the 'at' cookie forwarded from vivid-web-athena
   await app.register(cookie)
 
-  // JWT — signs/verifies tokens with the same secret as vivid-web-athena
+  // The 'at' cookie in vivid-web-athena is a JSON object, not a JWT — auth arrives
+  // as Authorization: Bearer <token> (the token field extracted from the at cookie by fanSaleService).
+  // TODO: if token is a Cognito RS256 JWT, replace secret with JWKS verification.
   await app.register(jwt, {
     secret: env.AUTH_JWT_SECRET,
-    cookie: {
-      cookieName: 'at',
-      signed: false,
-    },
   })
 
   // Database
